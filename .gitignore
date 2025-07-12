@@ -1,0 +1,55 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+*.egg-info/
+.Python
+build/
+dist/
+
+# Virtual environment
+venv/
+env/
+.venv/
+.direnv/
+
+# IDE-specific files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS-specific files
+.DS_Store
+.Trashes
+Thumbs.db
+
+# Jupyter Notebook files
+.ipynb_checkpoints/
+
+# MyPy
+.mypy_cache/
+
+# pytest
+.pytest_cache/
+.coverage
+.coverage.*
+.cache/
+
+# Logs and databases
+*.log
+*.sqlite3
+*.db
+
+# dotenv files
+.env
+.flaskenv
+
+# Python installer issues
+pip-log.txt
+pip-delete-this-directory.txt
+
+# User-specific files
+.python_history
