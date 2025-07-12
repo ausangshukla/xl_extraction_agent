@@ -1,4 +1,5 @@
 import os
+import json # Added for JSON output
 from typing import List, Dict, Any
 from langgraph.graph import StateGraph, END
 from src.utlis.validation_utils import validate_kpi_data
@@ -10,16 +11,23 @@ from src.common.types import AgentState # Import AgentState from common types
 # Define the nodes (functions) for the LangGraph agent
 def get_excel_files(state: AgentState) -> AgentState:
     excel_files = []
-    for root, _, files in os.walk(state["folder_path"]):
+    absolute_folder_path = os.path.abspath(state["folder_path"])
+    print(f"DEBUG: Scanning absolute folder path: {absolute_folder_path}")
+    for root, _, files in os.walk(absolute_folder_path):
         for file in files:
             if file.endswith((".xlsx", ".xls")):
                 excel_files.append(os.path.join(root, file))
     state["file_paths"] = excel_files
     state["current_file_index"] = 0
+    print(f"DEBUG: Found {len(state['file_paths'])} Excel files.")
     return state
 
 
 def validate_extracted_kpis(state: AgentState) -> AgentState:
+    print(f"DEBUG: validate_extracted_kpis called. current_file_index: {state['current_file_index']}, file_paths length: {len(state['file_paths'])}")
+    if not state["file_paths"] or state["current_file_index"] == 0:
+        print("WARNING: No files to validate or current_file_index is 0. Skipping validation.")
+        return state # Or handle this case as appropriate, maybe raise an error or log
     current_file_path = state["file_paths"][state["current_file_index"] - 1]
     current_file_basename = os.path.basename(current_file_path)
     
@@ -101,3 +109,12 @@ if __name__ == "__main__":
                 print(f"  - {unextracted_num}")
     else:
         print("No validation results available.")
+
+    print("\n--- Raw KPI JSON Output ---")
+    # To ensure all data is serializable, especially if there are complex objects
+    # We'll create a simplified dictionary for JSON output
+    json_output = {
+        "extracted_kpis": final_state["extracted_data"],
+        "validation_summary": final_state["validation_results"]
+    }
+    print(json.dumps(json_output, indent=2))

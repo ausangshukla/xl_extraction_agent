@@ -23,7 +23,9 @@ def validate_kpi_data(extracted_kpis: List[Dict[str, Any]], excel_file_path: str
 
     # --- Tier 1: Structural Validation ---
     structurally_valid_kpis = []
-    for kpi_data in extracted_kpis:
+    print(f"DEBUG: Starting structural validation for {len(extracted_kpis)} extracted KPIs.")
+    for i, kpi_data in enumerate(extracted_kpis):
+        print(f"DEBUG: Processing KPI {i+1}/{len(extracted_kpis)}: {kpi_data.get('kpi')} - Value: {kpi_data.get('value')}")
         kpi_name = kpi_data.get("kpi")
         kpi_value = kpi_data.get("value")
         kpi_period = kpi_data.get("period")
@@ -41,7 +43,13 @@ def validate_kpi_data(extracted_kpis: List[Dict[str, Any]], excel_file_path: str
         if kpi_value is None:
             validation_status = "INVALID_STRUCTURE"
             notes.append("Value is missing.")
-        elif not isinstance(kpi_value, (int, float, str)) or (isinstance(kpi_value, str) and not str(kpi_value).replace(",", "").replace(".", "").isdigit()):
+        elif isinstance(kpi_value, str):
+            try:
+                float(kpi_value.replace(",", "")) # Attempt to convert to float, ignoring commas
+            except ValueError:
+                validation_status = "INVALID_STRUCTURE"
+                notes.append("Value is not a valid number format.")
+        elif not isinstance(kpi_value, (int, float)):
             validation_status = "INVALID_STRUCTURE"
             notes.append("Value is not a valid number format.")
         
@@ -58,6 +66,7 @@ def validate_kpi_data(extracted_kpis: List[Dict[str, Any]], excel_file_path: str
             notes.append("Column number is missing or invalid.")
 
         if validation_status == "INVALID_STRUCTURE":
+            print(f"DEBUG: KPI '{kpi_name}' failed structural validation. Notes: {notes}")
             validated_kpis.append({
                 "kpi": kpi_name,
                 "value": kpi_value,
@@ -69,8 +78,10 @@ def validate_kpi_data(extracted_kpis: List[Dict[str, Any]], excel_file_path: str
                 "notes": notes
             })
         else:
+            print(f"DEBUG: KPI '{kpi_name}' passed structural validation.")
             structurally_valid_kpis.append(kpi_data)
 
+    print(f"DEBUG: Structural validation completed. Found {len(structurally_valid_kpis)} structurally valid KPIs.")
     if not structurally_valid_kpis:
         print("DEBUG: No structurally valid KPIs to cross-validate.")
         return {
@@ -93,40 +104,49 @@ def validate_kpi_data(extracted_kpis: List[Dict[str, Any]], excel_file_path: str
 
     potential_unextracted_kpi_values = set()
 
+    print(f"DEBUG: Iterating through sheets to find potential unextracted KPI values.")
     for sheet_name in workbook.sheetnames:
         sheet = workbook[sheet_name]
+        print(f"DEBUG: Processing sheet: {sheet_name}")
         
         # Find header row (assuming first row for now, can be made more robust)
         # header_row_values = [cell.value for cell in sheet[1]] # Not directly used for unextracted numbers anymore
         
         for target_kpi_name in target_kpis:
+            print(f"DEBUG: Searching for target KPI '{target_kpi_name}' in sheet '{sheet_name}'.")
             # This part is still relevant for finding potential unextracted numbers related to target KPIs
             kpi_row_index = -1
             for r_idx, row in enumerate(sheet.iter_rows()):
                 for cell in row:
                     if cell.value and isinstance(cell.value, str) and target_kpi_name.lower() == str(cell.value).lower():
                         kpi_row_index = r_idx
+                        print(f"DEBUG: Found target KPI '{target_kpi_name}' at row {r_idx + 1}.")
                         break
                 if kpi_row_index != -1:
                     break
             
             if kpi_row_index != -1:
+                print(f"DEBUG: Extracting potential values from row {kpi_row_index + 2} for KPI '{target_kpi_name}'.")
                 for c_idx, cell in enumerate(sheet[kpi_row_index + 1]):
                     if isinstance(cell.value, (int, float)):
                         potential_unextracted_kpi_values.add(str(cell.value).replace(",", ""))
+                        print(f"DEBUG: Added numeric value '{cell.value}' to potential unextracted values.")
                     elif isinstance(cell.value, str):
                         num_str_cleaned = cell.value.replace(",", "")
                         if re.match(r'^\d+(\.\d+)?$', num_str_cleaned):
                             potential_unextracted_kpi_values.add(num_str_cleaned)
+                            print(f"DEBUG: Added string numeric value '{cell.value}' to potential unextracted values.")
 
+    print(f"DEBUG: Starting cross-validation for {len(structurally_valid_kpis)} structurally valid KPIs.")
     for kpi_data in structurally_valid_kpis:
-        if kpi_data.get("validation_status") == "Valid":
+        if kpi_data.get("validation_status") == "Valid": # Ensure it's still valid from previous checks
             kpi_name = kpi_data["kpi"]
             kpi_value = kpi_data["value"]
             kpi_period = kpi_data["period"]
             row_number = kpi_data["row_number"]
             column_number = kpi_data["column_number"]
             extracted_value_str = str(kpi_value).replace(",", "")
+            print(f"DEBUG: Cross-validating KPI '{kpi_name}' (Value: '{extracted_value_str}') at R{row_number}C{column_number}.")
 
             try:
                 # Access the sheet using the name from the extracted data's source_file
@@ -169,14 +189,18 @@ def validate_kpi_data(extracted_kpis: List[Dict[str, Any]], excel_file_path: str
                         pass
                 
                 if not source_value_found:
+                    print(f"DEBUG: Value not found at R{row_number}C{column_number} in any sheet for KPI '{kpi_name}'.")
                     kpi_data["validation_status"] = "LOCATION_NOT_FOUND_IN_EXCEL"
                     kpi_data["notes"].append(f"Could not find value at R{row_number}C{column_number} in any sheet of the source Excel file.")
 
             except Exception as e:
+                print(f"ERROR: Unexpected error during cross-validation for KPI '{kpi_name}': {e}")
                 kpi_data["validation_status"] = "CROSS_VALIDATION_ERROR"
                 kpi_data["notes"].append(f"Error during cross-validation for KPI '{kpi_name}': {e}")
             
             validated_kpis.append(kpi_data)
+
+    print(f"DEBUG: Cross-validation completed. Total validated KPIs: {len(validated_kpis)}.")
 
     extracted_values_from_current_file = {
         str(kpi_data.get("value")).replace(",", "")
@@ -184,11 +208,13 @@ def validate_kpi_data(extracted_kpis: List[Dict[str, Any]], excel_file_path: str
         if kpi_data.get("value") is not None
     }
 
+    print(f"DEBUG: Identifying unextracted numbers from potential values.")
     for num_str in potential_unextracted_kpi_values:
         if num_str not in extracted_values_from_current_file:
             unextracted_numbers.append(num_str)
+            print(f"DEBUG: Identified unextracted number: {num_str}")
 
-    print(f"DEBUG: KPI validation completed for file: {excel_file_path}.")
+    print(f"DEBUG: KPI validation completed for file: {excel_file_path}. Found {len(unextracted_numbers)} unextracted numbers.")
     return {
         "validated_kpis": validated_kpis,
         "unextracted_numbers": list(unextracted_numbers)
