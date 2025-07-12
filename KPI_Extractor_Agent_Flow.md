@@ -125,3 +125,29 @@ sequenceDiagram
     *   If true, it returns `"convert_and_process_file"`, causing the workflow to loop back and process the next Excel file.
     *   If false (all Excel files have been processed), it returns `"end"`, terminating the workflow.
 6.  **Final Output**: Once the workflow ends, the main script prints all the collected `extracted_data`.
+7.  **`validate_extracted_kpis` Node**:
+    *   This node is responsible for performing a robust, two-tiered validation of the KPIs extracted by the LLM. It utilizes the `validate_kpi_data` function from `src/utlis/validation_utils.py`.
+    *   **Tier 1: Structural Validation**:
+        *   This initial check ensures the basic integrity and format of the data returned by the LLM.
+        *   For each extracted KPI record, it verifies:
+            *   **Presence and Type of `kpi`**: Ensures the KPI name exists, is a string, and is not empty.
+            *   **Presence and Format of `value`**: Checks if the value exists and is a valid numeric format (integer, float, or a string convertible to a number).
+            *   **Presence and Type of `period`**: Confirms the period exists, is a string, and is not empty.
+        *   If any of these checks fail, the KPI is immediately marked with `"INVALID_STRUCTURE"` status and relevant notes. These KPIs do not proceed to Tier 2.
+    *   **Tier 2: Contextual Cross-Validation**:
+        *   For KPIs that passed Tier 1, this deeper validation step cross-references the extracted data with the original Excel file to ensure accuracy in context.
+        *   **Process for each structurally valid KPI**:
+            1.  **Load Excel Sheets**: The original Excel file is loaded using `openpyxl`.
+            2.  **Extract All Numbers**: All numbers from the current Excel file's sheets are extracted using a regular expression. These are later used to identify `unextracted_numbers` (numbers present in the source but not extracted as KPIs by the LLM).
+            3.  **Locate KPI and Period**: The function attempts to find the row containing the KPI name (case-insensitive, partial match) and the column corresponding to the period (case-insensitive, partial match) within the Excel sheets.
+            4.  **Retrieve Source Value**: If both the KPI row and period column are found, the value from the intersecting cell in the original Excel file is retrieved.
+            5.  **Compare and Verify**: The AI-extracted value is normalized (e.g., commas removed, converted to numeric if possible) and compared against the source value.
+        *   **Detailed Validation Statuses**: Based on this comparison, each KPI receives a specific status:
+            *   **`Valid`**: The extracted value matches the source value at the correct location.
+            *   **`VALUE_MISMATCH`**: The extracted value does not match the source value.
+            *   **`KPI_NOT_FOUND`**: The KPI name could not be located in the Excel file.
+            *   **`PERIOD_NOT_FOUND`**: The period could not be found in the relevant sheet's header.
+            *   **`VALUE_MISSING_IN_SOURCE`**: The cell in the source Excel corresponding to the KPI and period was empty.
+            *   **`EXCEL_LOAD_ERROR`**: The Excel file could not be loaded for validation.
+            *   **`CELL_ACCESS_ERROR`**: An error occurred while trying to access a specific cell in the Excel file.
+    *   The `validation_results` for the current file, including `validated_kpis` (with their detailed statuses and notes) and `unextracted_numbers`, are stored in the agent's state, keyed by the filename.

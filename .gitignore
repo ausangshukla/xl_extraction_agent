@@ -13,6 +13,7 @@ venv/
 env/
 .venv/
 .direnv/
+test_excel_files/
 
 # IDE-specific files
 .idea/
