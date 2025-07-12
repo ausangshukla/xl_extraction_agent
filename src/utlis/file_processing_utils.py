@@ -63,7 +63,9 @@ def convert_and_process_file(state: AgentState) -> AgentState:
                     print(f"DEBUG: Processing extracted KPI: {kpi_name}, Value: {kpi_value}")
                     # Convert kpi_name to lowercase for case-insensitive comparison
                     if kpi_name and kpi_name.lower() in {k.lower() for k in kpis_to_find_in_current_excel} and kpi_value is not None:
+                        # Set source_file to the original Excel file name
                         extracted_kpi_data["source_file"] = os.path.basename(excel_file_path)
+                        extracted_kpi_data["csv_file_path"] = csv_file_path_full # Add the full CSV path
                         
                         # LLM is expected to provide row_number and column_number directly
                         # No programmatic finding needed here

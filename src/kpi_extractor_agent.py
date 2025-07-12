@@ -25,22 +25,60 @@ def get_excel_files(state: AgentState) -> AgentState:
 
 def validate_extracted_kpis(state: AgentState) -> AgentState:
     print(f"DEBUG: validate_extracted_kpis called. current_file_index: {state['current_file_index']}, file_paths length: {len(state['file_paths'])}")
-    if not state["file_paths"] or state["current_file_index"] == 0:
-        print("WARNING: No files to validate or current_file_index is 0. Skipping validation.")
-        return state # Or handle this case as appropriate, maybe raise an error or log
-    current_file_path = state["file_paths"][state["current_file_index"] - 1]
-    current_file_basename = os.path.basename(current_file_path)
     
-    # Filter extracted_data to only include KPIs from the current file
-    extracted_kpis_for_current_file = [
+    if not state["extracted_data"]:
+        print("WARNING: No extracted KPIs to validate. Skipping validation.")
+        return state
+
+    # Get the current Excel file path that was just processed
+    # current_file_index is already incremented in convert_and_process_file for the *next* file
+    # So, we need to use current_file_index - 1 to get the *current* Excel file.
+    current_excel_file_path = state["file_paths"][state["current_file_index"] - 1]
+    current_excel_file_basename = os.path.basename(current_excel_file_path)
+
+    # Filter extracted_data to only include KPIs from the current Excel file
+    # These KPIs should have their 'source_file' set to the original Excel filename
+    extracted_kpis_for_current_excel = [
         kpi_data for kpi_data in state["extracted_data"]
-        if kpi_data.get("source_file") == current_file_basename
+        if kpi_data.get("source_file") == current_excel_file_basename
     ]
-    
-    validation_output = validate_kpi_data(extracted_kpis_for_current_file, current_file_path, state["kpis"])
-    
-    state["validation_results"][current_file_basename] = validation_output
-    print(f"DEBUG: KPI validation completed for file: {current_file_basename}.")
+
+    if not extracted_kpis_for_current_excel:
+        print(f"WARNING: No KPIs found for current Excel file '{current_excel_file_basename}' in extracted_data. Skipping validation for this file.")
+        return state
+
+    # Group these KPIs by their CSV file path for validation
+    kpis_by_csv_file_for_current_excel = {}
+    for kpi_data in extracted_kpis_for_current_excel:
+        csv_file_path = kpi_data.get("csv_file_path")
+        if csv_file_path:
+            if csv_file_path not in kpis_by_csv_file_for_current_excel:
+                kpis_by_csv_file_for_current_excel[csv_file_path] = []
+            kpis_by_csv_file_for_current_excel[csv_file_path].append(kpi_data)
+        else:
+            print(f"WARNING: KPI data for '{kpi_data.get('kpi')}' missing 'csv_file_path'. Cannot validate.")
+
+    # Initialize validation results for the current Excel file
+    if current_excel_file_basename not in state["validation_results"]:
+        state["validation_results"][current_excel_file_basename] = {
+            "validated_kpis": [],
+            "unextracted_numbers": []
+        }
+
+    for csv_file_path, kpis_to_validate in kpis_by_csv_file_for_current_excel.items():
+        csv_file_basename = os.path.basename(csv_file_path)
+        print(f"DEBUG: Validating KPIs for CSV file: {csv_file_basename} (derived from {current_excel_file_basename})")
+        
+        # Pass the CSV file path to validate_kpi_data
+        validation_output = validate_kpi_data(kpis_to_validate, csv_file_path, state["kpis"])
+        
+        # Aggregate results into the validation_results keyed by the original Excel file
+        state["validation_results"][current_excel_file_basename]["validated_kpis"].extend(validation_output["validated_kpis"])
+        state["validation_results"][current_excel_file_basename]["unextracted_numbers"].extend(validation_output["unextracted_numbers"])
+        
+        print(f"DEBUG: KPI validation completed for CSV file: {csv_file_basename}.")
+        
+    print(f"DEBUG: All KPI validation for Excel file '{current_excel_file_basename}' completed.")
     return state
 
 
@@ -78,8 +116,8 @@ if __name__ == "__main__":
     # Example Usage
     # Make sure to replace with your actual folder path and KPIs
     folder_to_scan = "test_excel_files"
-    kpis_to_extract = ["Revenue from operations", "Gross Profit", "Profit After Tax"]
-    # kpis_to_extract = ["Revenue from operations"]
+    # kpis_to_extract = ["Revenue from operations", "Gross Profit", "Profit After Tax"]
+    kpis_to_extract = ["Revenue from operations"]
     agent = create_kpi_extractor_agent()
     
     initial_state = AgentState(
@@ -114,7 +152,14 @@ if __name__ == "__main__":
     # To ensure all data is serializable, especially if there are complex objects
     # We'll create a simplified dictionary for JSON output
     json_output = {
-        "extracted_kpis": final_state["extracted_data"],
-        "validation_summary": final_state["validation_results"]
+        "extracted_kpis_before_validation": final_state["extracted_data"],
+        "validation_summary": final_state["validation_results"],
+        "validated_kpis_detailed": [] # Initialize an empty list for detailed validated KPIs
     }
+
+    # Populate validated_kpis_detailed from validation_results
+    for file_name, results in final_state["validation_results"].items():
+        for kpi_result in results["validated_kpis"]:
+            json_output["validated_kpis_detailed"].append(kpi_result)
+
     print(json.dumps(json_output, indent=2))
