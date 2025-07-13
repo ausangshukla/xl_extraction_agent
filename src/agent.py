@@ -2,6 +2,7 @@ import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, AIMessage, FunctionMessage
+from langchain_core.tools import tool
 from langchain_core.utils.function_calling import convert_to_openai_function
 from langgraph.prebuilt import ToolExecutor, ToolInvocation
 import json

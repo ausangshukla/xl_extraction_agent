@@ -215,11 +215,15 @@ def validate_kpi_data(extracted_kpis: List[Dict[str, Any]], file_path_to_validat
                         sheet = workbook[sheet_identifier_for_cell_access]
                         try:
                             source_value_cell = sheet.cell(row=row_number, column=column_number).value
+                            if pd.isna(source_value_cell):
+                                source_value_cell = None
+                            
                             if source_value_cell is not None:
                                 source_value_str_from_source = str(source_value_cell).replace(",", "")
                                 
                                 # Compare values
-                                if extracted_value_str == source_value_str_from_source:
+                                if extracted_value_str == source_value_str_from_source or \
+                                   (extracted_value_str == '0' and source_value_cell is None):
                                     kpi_data["validation_status"] = "Valid"
                                     kpi_data["validated"] = True
                                     print(f"DEBUG: KPI '{kpi_name}' validation result: True (Exact match)")
@@ -257,11 +261,15 @@ def validate_kpi_data(extracted_kpis: List[Dict[str, Any]], file_path_to_validat
                         try:
                             # For CSV, row_number and column_number are 1-based from LLM, pandas is 0-based
                             source_value_cell = df.iloc[row_number - 1, column_number - 1]
+                            if pd.isna(source_value_cell):
+                                source_value_cell = None
+
                             if source_value_cell is not None:
                                 source_value_str_from_source = str(source_value_cell).replace(",", "")
                                 
                                 # Compare values
-                                if extracted_value_str == source_value_str_from_source:
+                                if extracted_value_str == source_value_str_from_source or \
+                                   (extracted_value_str == '0' and source_value_cell is None):
                                     kpi_data["validation_status"] = "Valid"
                                     kpi_data["validated"] = True
                                     print(f"DEBUG: KPI '{kpi_name}' validation result: True (Exact match)")

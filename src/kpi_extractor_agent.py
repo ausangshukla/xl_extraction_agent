@@ -1,4 +1,6 @@
+import sys
 import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import json # Added for JSON output
 from typing import List, Dict, Any
 from langgraph.graph import StateGraph, END
@@ -116,8 +118,8 @@ if __name__ == "__main__":
     # Example Usage
     # Make sure to replace with your actual folder path and KPIs
     folder_to_scan = "test_excel_files"
-    # kpis_to_extract = ["Revenue from operations", "Gross Profit", "Profit After Tax"]
-    kpis_to_extract = ["Revenue from operations"]
+    kpis_to_extract = ["Revenue from operations", "Gross Profit", "Profit After Tax"]
+    # kpis_to_extract = ["Revenue from operations"]
     agent = create_kpi_extractor_agent()
     
     initial_state = AgentState(

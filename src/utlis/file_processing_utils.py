@@ -1,4 +1,6 @@
+import sys
 import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import pandas as pd
 import json
 import openpyxl
@@ -44,8 +46,11 @@ def convert_and_process_file(state: AgentState) -> AgentState:
             print(f"DEBUG: Attempting to process CSV: {csv_file_path_full}")
             
             if os.path.exists(csv_file_path_full):
-                df = pd.read_csv(csv_file_path_full)
-                file_content = df.to_string()
+                df = pd.read_csv(csv_file_path_full, header=None)
+                # Data cleaning
+                df.dropna(how='all', inplace=True) # Remove empty rows
+                df.dropna(how='all', axis=1, inplace=True) # Remove empty columns
+                file_content = df.to_csv(index=False, header=False)
                 print(f"DEBUG: Read CSV content (length: {len(file_content)} chars) from {csv_file_path_full}")
                 
                 if not kpis_to_find_in_current_excel:
@@ -94,30 +99,31 @@ def extract_kpis_with_llm(file_content: str, kpis: List[str]) -> List[Dict[str, 
     llm = get_gemini_llm()
     
     prompt = f"""
-    Given the following text content from an Excel/CSV file, extract the specified KPIs.
-    For each KPI, identify its value and the corresponding date or period from the header row.
-    
+    Given the following CSV data, find the values for the specified KPIs.
+    For each KPI, identify its value and the corresponding date or period from the header rows.
+
     KPIs to extract: {", ".join(kpis)}
-    
-    File Content:
+
+    CSV data:
     {file_content}
     
     Provide the output *only* as a JSON array of objects, where each object has 'kpi', 'period', 'value', 'row_number', and 'column_number' fields.
     Do NOT include any additional text, explanations, or code blocks outside of the JSON.
     If a KPI is not found or a period cannot be determined, use null for that field. If row_number or column_number cannot be determined, use null.
+
     Example:
     [
         {{
             "kpi": "Revenue",
             "period": "2023-Q1",
-            "value": "1000000",
+            "value": 1000000,
             "row_number": 5,
             "column_number": 2
         }},
         {{
             "kpi": "Profit",
             "period": "2023-Q1",
-            "value": "200000",
+            "value": 200000,
             "row_number": 6,
             "column_number": 2
         }}
@@ -125,19 +131,45 @@ def extract_kpis_with_llm(file_content: str, kpis: List[str]) -> List[Dict[str, 
     """
     print(f"DEBUG: LLM Prompt (first 500 chars): {prompt[:500]}...")
     
-    response = llm.invoke([HumanMessage(content=prompt)])
+    response = llm.invoke([HumanMessage(content=prompt)], tool_choice="none", tools=[])
     print(f"DEBUG: Raw LLM Response Content: {response.content}")
     try:
+        # Extract JSON from the response, handling markdown code blocks
         json_string = response.content.strip()
         if json_string.startswith("```json"):
             json_string = json_string[len("```json"):].strip()
         if json_string.endswith("```"):
             json_string = json_string[:-len("```")].strip()
-        
-        parsed_json = json.loads(json_string)
-        print(f"DEBUG: Parsed JSON from LLM: {parsed_json}")
+
+        # Attempt to parse the entire JSON string first
+        try:
+            parsed_json = json.loads(json_string)
+        except json.JSONDecodeError as e:
+            print(f"ERROR: Initial JSON parsing failed: {e}. Attempting to recover partial data.")
+            # If parsing fails, try to recover by finding all valid JSON objects in the string
+            parsed_json = []
+            # Use a regex to find all top-level JSON objects (e.g., {...})
+            json_objects = re.findall(r'\{.*?\}', json_string, re.DOTALL)
+            for obj_str in json_objects:
+                try:
+                    parsed_json.append(json.loads(obj_str))
+                except json.JSONDecodeError:
+                    print(f"WARNING: Could not parse a partial JSON object: {obj_str}")
+                    continue # Skip malformed objects
+
+        # Ensure 'value' is always a string to prevent unterminated string errors
+        for item in parsed_json:
+            if "value" in item and not isinstance(item["value"], str):
+                item["value"] = str(item["value"])
+                
+        print(f"DEBUG: Parsed and normalized JSON from LLM: {parsed_json}")
         return parsed_json
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Error decoding JSON from LLM response: {e}")
-        print(f"ERROR: Problematic content: {response.content}")
+    except Exception as e:
+        print(f"An unexpected error occurred during JSON processing: {e}")
+        return []
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        return []
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
         return []
