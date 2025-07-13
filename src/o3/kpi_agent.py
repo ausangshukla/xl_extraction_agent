@@ -37,6 +37,7 @@ class ExtractionState(TypedDict, total=False):
     target_kpis: List[str]
     dfs: List[pd.DataFrame]      # NEW – many DataFrames, one per CSV
     table_chunks: List[str]
+    chunk_row_offsets: List[int] # NEW - starting row index for each chunk
     extracted: List[Dict[str, Any]]
 
 
@@ -87,6 +88,7 @@ def orient_and_chunk_all(state: ExtractionState,
     """Convert each DataFrame to markdown, then chunk rows for LLM."""
     logging.info("Starting to orient and chunk DataFrames.")
     table_chunks: List[str] = []
+    chunk_row_offsets: List[int] = []
 
     for i, df in enumerate(state["dfs"]):
         logging.info(f"Processing DataFrame {i+1}/{len(state['dfs'])}")
@@ -98,14 +100,16 @@ def orient_and_chunk_all(state: ExtractionState,
             # Disable column width limit so LLM sees the full table
             table_chunks.append(
                 sub_df.to_markdown(
-                    index=False,
+                    index=True, # Change to True to include DataFrame index as a column
                     tablefmt="pipe",
                     maxcolwidths=[None] * len(sub_df.columns)
                 )
             )
+            chunk_row_offsets.append(start) # Store the starting row index of this chunk
             logging.debug(f"Created chunk from row {start} to {start + chunk_rows - 1}")
 
     state["table_chunks"] = table_chunks
+    state["chunk_row_offsets"] = chunk_row_offsets
     logging.info(f"Finished orienting and chunking. Total chunks created: {len(table_chunks)}")
     return state
 
@@ -129,8 +133,10 @@ EXTRACT_TOOL_SCHEMA = {
 SYSTEM_PROMPT = (
     "You are a finance assistant. "
     "You receive (1) a markdown table and (2) a list of KPI names to extract.\n"
+    "The markdown table includes an index column (the first column) which represents the original row number from the source data. "
     "Ensure all columns in the provided markdown table are considered for extraction.\n"
-    "Return ONLY a JSON array that matches the schema of the provided tool."
+    "Return ONLY a JSON array that matches the schema of the provided tool. "
+    "For the 'row' field, use the value from the index column (the first column) of the markdown table, adjusted to be 1-based."
 )
 
 def extract_kpis_llm(state: ExtractionState, model: Optional[BaseChatModel] = None
@@ -145,7 +151,6 @@ def extract_kpis_llm(state: ExtractionState, model: Optional[BaseChatModel] = No
 
     for i, chunk in enumerate(state["table_chunks"]):
         logging.info(f"Processing chunk {i+1}/{len(state['table_chunks'])} for LLM extraction.")
-        # print(f"DEBUG: Processing chunk with {chunk}")
         user_prompt = (
             f"**KPI list**: {target_list}\n"
             f"**Table**:\n```markdown\n{chunk}\n```\n\n"
@@ -166,6 +171,7 @@ def extract_kpis_llm(state: ExtractionState, model: Optional[BaseChatModel] = No
         try:
             # The schema expects an object with a "kpis" key, which is a list
             parsed = [KPIRecord.model_validate(rec).model_dump() for rec in call_args["kpis"]]
+            
             all_records.extend(parsed)
             logging.info(f"Successfully extracted {len(parsed)} records from chunk {i+1}.")
         except (ValidationError, KeyError) as e:
@@ -279,7 +285,7 @@ def cross_reference_checker(state: VerificationState,
 
         header = rec["header"]
         
-        logging.debug(f"Checking record {i}: KPI='{kpi_name}', Extracted Value='{extracted_value}', Original Row={rec['row']}, Original Col={rec['col']}, Header='{header}'")
+        logging.info(f"Checking record {i}: KPI='{kpi_name}', Extracted Value='{extracted_value}', Original Row={rec['row']}, Original Col={rec['col']}, Header='{header}'")
 
         # Check if header exists in DataFrame
         if header not in header_to_col_idx:
