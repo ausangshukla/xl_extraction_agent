@@ -74,7 +74,7 @@ def _ensure_first_col_is_kpi(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def orient_and_chunk_all(state: ExtractionState,
-                         chunk_rows: int = 40) -> ExtractionState:
+                         chunk_rows: int = 200) -> ExtractionState:
     """Convert each DataFrame to markdown, then chunk rows for LLM."""
     table_chunks: List[str] = []
 
@@ -84,7 +84,14 @@ def orient_and_chunk_all(state: ExtractionState,
         # Break big tables into ≤chunk_rows KPI rows each
         for start in range(0, len(df), chunk_rows):
             sub_df = df.iloc[start:start + chunk_rows]
-            table_chunks.append(sub_df.to_markdown(index=False))
+            # Disable column width limit so LLM sees the full table
+            table_chunks.append(
+                sub_df.to_markdown(
+                    index=False,
+                    tablefmt="pipe",
+                    maxcolwidths=[None] * len(sub_df.columns)
+                )
+            )
 
     state["table_chunks"] = table_chunks
     return state
@@ -109,6 +116,7 @@ EXTRACT_TOOL_SCHEMA = {
 SYSTEM_PROMPT = (
     "You are a finance assistant. "
     "You receive (1) a markdown table and (2) a list of KPI names to extract.\n"
+    "Ensure all columns in the provided markdown table are considered for extraction.\n"
     "Return ONLY a JSON array that matches the schema of the provided tool."
 )
 
@@ -122,6 +130,8 @@ def extract_kpis_llm(state: ExtractionState, model: Optional[BaseChatModel] = No
     all_records: List[Dict[str, Any]] = []
 
     for chunk in state["table_chunks"]:
+
+        # print(f"DEBUG: Processing chunk with {chunk}")
         user_prompt = (
             f"**KPI list**: {target_list}\n"
             f"**Table**:\n```markdown\n{chunk}\n```\n\n"
