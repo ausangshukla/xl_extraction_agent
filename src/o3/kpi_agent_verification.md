@@ -60,3 +60,37 @@ In the main execution block (lines 277-322), after the KPI extraction is complet
     *   `extracted`: The list of KPI records obtained from the extraction process.
 3.  The graph then executes the verification nodes in sequence, collecting all issues.
 4.  Finally, the `report_generator` node prints the outcome of the verification.
+## Proposed Enhancement: Cross-Referencing with Source Data
+
+The current verifier checks the internal consistency of the extracted data but does not confirm its accuracy against the original source CSV. To address this, a new verification step will be added to cross-reference the extracted values with the source data.
+
+### 1. New Verification Node: `cross_reference_checker`
+
+A new function, `cross_reference_checker`, will be added to the verification graph.
+
+**Logic:**
+For each extracted KPI record, the function will:
+1.  Use the `row` and `header` coordinates from the extracted record to locate the exact cell in the source DataFrame (`df`).
+2.  Parse the original value from that cell, handling cleaning and conversion to a numeric type.
+3.  Compare the source value with the `value` extracted by the LLM.
+4.  If the values do not match, it will flag a "Value mismatch" issue.
+5.  It will also handle cases where the coordinates provided by the LLM are invalid.
+
+### 2. Updated Verification Graph
+
+The new `cross_reference_checker` node will be integrated into the verification graph after the initial data integrity checks but before the final report is generated.
+
+The new flow will be as follows:
+
+```mermaid
+graph TD
+    A[START] --> B(schema);
+    B --> C(missing);
+    C --> D(dups);
+    D --> E(sanity);
+    E --> F((cross_reference));
+    F --> G(report);
+    G --> H[END];
+
+    style F fill:#f9f,stroke:#333,stroke-width:2px
+```
