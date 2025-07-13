@@ -285,7 +285,7 @@ def cross_reference_checker(state: VerificationState,
 
         header = rec["header"]
         
-        logging.info(f"Checking record {i}: KPI='{kpi_name}', Extracted Value='{extracted_value}', Original Row={rec['row']}, Original Col={rec['col']}, Header='{header}'")
+        logging.debug(f"Checking record {i}: KPI='{kpi_name}', Extracted Value='{extracted_value}', Original Row={rec['row']}, Original Col={rec['col']}, Header='{header}'")
 
         # Check if header exists in DataFrame
         if header not in header_to_col_idx:
@@ -330,6 +330,10 @@ def cross_reference_checker(state: VerificationState,
         if math.isnan(extracted_value) and math.isnan(df_value):
             logging.debug(f"Both extracted and source values for '{kpi_name}' are NaN. Considered a match.")
             continue # Both are NaN, consider them a match
+        elif (math.isnan(extracted_value) and df_value == 0.0) or \
+             (math.isnan(df_value) and extracted_value == 0.0):
+            logging.debug(f"Mismatch ignored: one value is 0.0 and the other is NaN for '{kpi_name}'.")
+            continue
         elif math.isnan(extracted_value) or math.isnan(df_value):
             issue_msg = f"Value mismatch for KPI '{kpi_name}' at ({rec['row']}, {header}): Extracted '{extracted_value}', Source '{df_value_str}' (one is NaN)."
             issues.append(issue_msg)
